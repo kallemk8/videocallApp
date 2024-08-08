@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Video Call</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.4.0/socket.io.min.js"></script>
+</head>
+<body>
+    <h1>Video Call</h1>
+    <video id="localVideo" autoplay muted style="width: 45%;"></video>
+    <video id="remoteVideo" autoplay style="width: 45%;"></video>
+
+    <script>
+        var socket = io.connect('http://' + document.domain + ':' + location.port);
+        var localStream;
+
+        socket.on('connect', function() {
+            console.log('Connected to server');  // Debug log
+        });
+
+        socket.on('video_frame', function(msg) {
+            console.log('Received video frame:', msg);  // Debug log
+            console.log('Received video framedf:', socket.id);  // Debug log
+           
+                var img = new Image();
+                img.src =  msg.data;
+                img.onload = function() {
+                    var canvas = document.createElement('canvas');
+                    var ctx = canvas.getContext('2d');
+                    canvas.width = img.width;
+                    canvas.height = img.height;
+                    ctx.drawImage(img, 0, 0);
+                    document.getElementById('remoteVideo').srcObject = canvas.captureStream();
+                };
+           
+        });
+
+        function startLocalVideo() {
+            navigator.mediaDevices.getUserMedia({ video: true })
+                .then(stream => {
+                    localStream = stream;
+                    document.getElementById('localVideo').srcObject = stream;
+
+                    const videoElement = document.createElement('video');
+                    videoElement.srcObject = stream;
+                    videoElement.play();
+
+                    const canvas = document.createElement('canvas');
+                    const ctx = canvas.getContext('2d');
+
+                    function sendFrame() {
+                        if (videoElement.readyState === videoElement.HAVE_ENOUGH_DATA) {
+                            canvas.width = videoElement.videoWidth;
+                            canvas.height = videoElement.videoHeight;
+                            ctx.drawImage(videoElement, 0, 0, canvas.width, canvas.height);
+                            const frameData = canvas.toDataURL('image/jpeg');
+                            socket.emit('video_frame', {
+                                id: socket.id,
+                                data: frameData
+                            });
+                            
+                        }
+                        requestAnimationFrame(sendFrame);
+                    }
+
+                    sendFrame();
+                })
+                .catch(error => {
+                    console.error('Error accessing media devices.', error);
+                });
+        }
+
+        window.onload = startLocalVideo;
+
+        window.onbeforeunload = function() {
+            if (localStream) {
+                localStream.getTracks().forEach(track => track.stop());
+            }
+        };
+    </script>
+</body>
+</html>
